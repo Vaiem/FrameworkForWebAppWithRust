@@ -30,6 +30,8 @@ struct Application{
     server_roads: ServerRoads,
 }
 
+struct MementoApplication;
+
 impl servConfig for Application {
     fn getRoad(&self, addr: String) -> String{
         //example
@@ -42,14 +44,31 @@ impl servConfig for Application {
     }
 }
 
+impl Application {
+
+    fn new(addrListener: String){
+        //impl later
+    } 
+
+    //return String it is temporarily, next version return Application
+    pub fn Build() -> Option<Application>{
+        //test_build_for_Application()
+        None
+    }
+}
 
 pub fn test_build_for_Application(){
     //let mut hash = HashMap::new();   
     //let a = hash.insert("awd".to_string(), "awda".to_string()).unwrap();
     unsafe{
+        if STATE_APP == 1 {
+            //return None;
+        }
+        let app = Application::new();
         INIT.call_once(|| {
              STATE_APP = 1;
         });
+        //app
     }
     
     
