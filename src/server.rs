@@ -30,7 +30,9 @@ struct Application{
     server_roads: ServerRoads,
 }
 
-struct MementoApplication;
+struct MementoApplication{
+    historyApp: Vec<Application>,
+}
 
 impl servConfig for Application {
     fn getRoad(&self, addr: String) -> String{
@@ -46,14 +48,30 @@ impl servConfig for Application {
 
 impl Application {
 
-    fn new(addrListener: String){
-        //impl later
+   async fn new(addrListener: String) -> Application{
+        //Create new object Application
+        Application{
+            //create error later
+            conection: Conection { tcpListener: TcpListener::bind(addrListener).await.unwrap() },
+            server_roads: ServerRoads {
+                 roads: Roads {
+                     mapRoads: HashMap::new()
+            } }
+        }
     } 
 
     //return String it is temporarily, next version return Application
-    pub fn Build() -> Option<Application>{
-        //test_build_for_Application()
-        None
+    pub async fn Build() -> Option<Application>{
+        unsafe{
+            if STATE_APP == 1 {
+                return None;
+            }
+            let app = Application::new("127.0.0.1:6379".to_string()).await;
+            INIT.call_once(|| {
+                 STATE_APP = 1;
+            });
+            Some(app)
+        }
     }
 }
 
@@ -64,7 +82,7 @@ pub fn test_build_for_Application(){
         if STATE_APP == 1 {
             //return None;
         }
-        let app = Application::new();
+        //let app = Application::new();
         INIT.call_once(|| {
              STATE_APP = 1;
         });
