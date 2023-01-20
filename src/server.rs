@@ -1,14 +1,17 @@
-use tokio::{io,net::{TcpListener,TcpStream}};
-use std::{collections::HashMap, sync::{Arc, Mutex}};
+use tokio::{io::{self, AsyncReadExt},net::{TcpListener,TcpStream}, join};
+use std::{collections::HashMap, sync::{Arc, Mutex}, future::Future};
 use std::sync::Once;
 
 static mut STATE_APP: usize = 0;
 static INIT: Once = Once::new();
 
+// update Handler later
+type Handler = Box<dyn Future<Output = ()> +'static>;
+
 trait servConfig {
     //return String it is temporarily, next version return handler
-    fn getRoad(&self, addr: String) -> String;
-    fn setRoad(&mut self, addr: String, handler: String) -> String;
+    fn getRoad(&self, addr: String) -> &Handler;
+    fn setRoad(&mut self, addr: String, handler: Handler) -> Result<(), io::Error>;
 }
 
 trait App: servConfig{
@@ -19,7 +22,7 @@ struct ServerRoads{
     roads: Roads,
 }
 struct Roads{
-    mapRoads: HashMap<String, String>,
+    mapRoads: HashMap<String, Handler>,
 }
 struct Conection{
     tcpListener: TcpListener,
@@ -35,14 +38,16 @@ struct MementoApplication{
 }
 
 impl servConfig for Application {
-    fn getRoad(&self, addr: String) -> String{
+    fn getRoad(&self, addr: String) -> &Handler{
         //example
-        self.server_roads.roads.mapRoads.get(&addr).unwrap().clone()
+        self.server_roads.roads.mapRoads.get(&addr).unwrap()
     }
 
-    fn setRoad(&mut self, addr: String, handler: String) -> String {
+    fn setRoad(&mut self, addr: String, handler: Handler) -> Result<(), io::Error>{
         //example 
-        self.server_roads.roads.mapRoads.insert(addr, handler).unwrap().clone()
+        //create ERROR later
+        self.server_roads.roads.mapRoads.insert(addr, handler).unwrap();
+        Ok(())
     }
 }
 
@@ -60,7 +65,6 @@ impl Application {
         }
     } 
 
-    //return String it is temporarily, next version return Application
     pub async fn Build() -> Option<Application>{
         unsafe{
             if STATE_APP == 1 {
@@ -73,21 +77,56 @@ impl Application {
             Some(app)
         }
     }
-}
 
-pub fn test_build_for_Application(){
-    //let mut hash = HashMap::new();   
-    //let a = hash.insert("awd".to_string(), "awda".to_string()).unwrap();
-    unsafe{
-        if STATE_APP == 1 {
-            //return None;
+    pub async fn run(&self){
+        loop {
+            let stream = self.conection.tcpListener.accept().await.unwrap();
+            
+            tokio::spawn(async move{
+                 processing_request(stream.0).await;
+            });      
+             
         }
-        //let app = Application::new();
-        INIT.call_once(|| {
-             STATE_APP = 1;
-        });
-        //app
     }
     
-    
 }
+
+async fn processing_request(stream: TcpStream){
+     //impl later   
+}
+
+async fn Get_handler_to_request<'a>(app: &'a Application, stream:&mut TcpStream) -> Option<&'a Handler>{
+    let mut buffer = vec![0;1024];
+    stream.read(&mut buffer).await.unwrap();
+    let keys = app.server_roads.roads.mapRoads.keys();
+    for key in keys {
+        if buffer.starts_with(key.as_bytes()){
+            return Some(app.getRoad(key.into()));
+        }
+    }
+    None
+}
+
+ //delet
+/*pub fn createHandler( f: impl Future<Output = ()> + 'static){
+        //self.setRoad("/test".to_string(), Box::new(f)).unwrap();  
+        //f(stream).await;
+}
+pub fn processing_requst(stream: TcpStream) -> Box<dyn Future<Output = ()> + 'static>{
+    Box::new(async move{
+        //stream.ready(interest).await;
+    })
+}
+
+pub async fn handler(){
+
+}
+
+pub async fn test(stream: TcpStream){
+    //createHandler(processing_requst(stream));
+    let a = test_build_for_Application;
+    let d = a(5,processing_requst).await;
+} 
+pub async fn test_build_for_Application(d: i32, f: fn(TcpStream) -> Box<dyn Future<Output = ()> + 'static>) -> i32{
+    5
+}*/
