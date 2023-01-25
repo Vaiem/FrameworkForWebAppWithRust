@@ -1,12 +1,14 @@
-use tokio::{io::{self, AsyncReadExt},net::{TcpListener,TcpStream}, join};
-use std::{collections::HashMap, sync::{Arc, Mutex}, future::Future};
+use tokio::{io::{self, AsyncReadExt},net::{TcpListener,TcpStream}, join,};
+use tokio::macros::support::Future;
+use std::{collections::HashMap, sync::{Arc, Mutex}};
 use std::sync::Once;
+use core::pin::Pin;
 
 static mut STATE_APP: usize = 0;
 static INIT: Once = Once::new();
 
 // update Handler later
-type Handler = Box<dyn Future<Output = ()> +'static>;
+type Handler = fn(TcpStream) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
 
 trait servConfig {
     //return String it is temporarily, next version return handler
@@ -78,12 +80,14 @@ impl Application {
         }
     }
 
-    pub async fn run(&self){
+    pub async fn run(&'static self){
         loop {
-            let stream = self.conection.tcpListener.accept().await.unwrap();
+            let mut stream = self.conection.tcpListener.accept().await.unwrap();
             
             tokio::spawn(async move{
-                 processing_request(stream.0).await;
+                let handler_current = Get_handler_to_request(self, &mut stream.0).await.unwrap();
+                  
+                processing_request(stream.0, handler_current).await;
             });      
              
         }
@@ -91,11 +95,14 @@ impl Application {
     
 }
 
-async fn processing_request(stream: TcpStream){
-     //impl later   
+async fn processing_request(stream: TcpStream, handler: &Handler)
+{
+
+     //processing of an incoming request with a user-defined function
+    handler(stream).await;
 }
 
-async fn Get_handler_to_request<'a>(app: &'a Application, stream:&mut TcpStream) -> Option<&'a Handler>{
+async fn Get_handler_to_request<'a>(app: &'a Application, stream:&mut tokio::net::TcpStream) -> Option<&'a Handler>{
     let mut buffer = vec![0;1024];
     stream.read(&mut buffer).await.unwrap();
     let keys = app.server_roads.roads.mapRoads.keys();
@@ -108,9 +115,10 @@ async fn Get_handler_to_request<'a>(app: &'a Application, stream:&mut TcpStream)
 }
 
  //delet
-/*pub fn createHandler( f: impl Future<Output = ()> + 'static){
-        //self.setRoad("/test".to_string(), Box::new(f)).unwrap();  
-        //f(stream).await;
+
+/*pub fn createHandler( f: Box<Future<Item = (), Error = ()> + Send>){
+          
+        
 }
 pub fn processing_requst(stream: TcpStream) -> Box<dyn Future<Output = ()> + 'static>{
     Box::new(async move{
@@ -127,6 +135,10 @@ pub async fn test(stream: TcpStream){
     let a = test_build_for_Application;
     let d = a(5,processing_requst).await;
 } 
-pub async fn test_build_for_Application(d: i32, f: fn(TcpStream) -> Box<dyn Future<Output = ()> + 'static>) -> i32{
+use core::pin::Pin;
+pub async fn test_build_for_Application(d: i32, f: fn(TcpStream) -> Pin<Box<dyn Future<Output = ()> + 'static>>, stream: TcpStream) -> i32{
+    
+    f(stream).await;
+    let a = Box::pin(d);
     5
 }*/
