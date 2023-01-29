@@ -1,6 +1,6 @@
-use tokio::{io::{self, AsyncReadExt},net::{TcpListener,TcpStream}, join,};
+use tokio::{io::{self, AsyncReadExt},net::{TcpListener,TcpStream}, join,sync::Mutex};
 use tokio::macros::support::Future;
-use std::{collections::HashMap, sync::{Arc, Mutex}};
+use std::{collections::HashMap, sync::{Arc}};
 use std::sync::Once;
 use core::pin::Pin;
 
@@ -10,7 +10,7 @@ static INIT: Once = Once::new();
 // update Handler later
 type Handler = fn(TcpStream) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
 
-trait servConfig {
+pub trait servConfig {
     //return String it is temporarily, next version return handler
     fn getRoad(&self, addr: String) -> &Handler;
     fn setRoad(&mut self, addr: String, handler: Handler) -> Result<(), io::Error>;
@@ -30,7 +30,7 @@ struct Conection{
     tcpListener: TcpListener,
 }
 
-struct Application{
+pub struct Application{
     conection: Conection,
     server_roads: ServerRoads,
 }
@@ -67,12 +67,12 @@ impl Application {
         }
     } 
 
-    pub async fn Build() -> Option<Application>{
+    pub async fn Build(addrListener: String) -> Option<Application>{
         unsafe{
             if STATE_APP == 1 {
                 return None;
             }
-            let app = Application::new("127.0.0.1:6379".to_string()).await;
+            let app = Application::new(addrListener).await;
             INIT.call_once(|| {
                  STATE_APP = 1;
             });
@@ -80,24 +80,36 @@ impl Application {
         }
     }
 
-    pub async fn run(&'static self){
+    pub async fn run(self: Arc<Self>){
         loop {
-            let mut stream = self.conection.tcpListener.accept().await.unwrap();
+            let copy_app = self.clone();
+            let mut stream = copy_app.conection.tcpListener.accept().await.unwrap();
             
-            tokio::spawn(async move{
-                let handler_current = Get_handler_to_request(self, &mut stream.0).await.unwrap();
-                  
+            let handler_current = Self::Get_handler_to_request(copy_app, Arc::new(Mutex::new(&mut stream.0)))
+                .await
+                .unwrap();
+            tokio::spawn(async move{    
                 processing_request(stream.0, handler_current).await;
             });      
              
         }
     }
     
+    async fn Get_handler_to_request(self: Arc<Self>, stream: Arc<tokio::sync::Mutex<&mut tokio::net::TcpStream>>) -> Option<Handler>{
+        let mut buffer = vec![0;1024];
+        stream.lock().await.read(&mut buffer).await.unwrap();
+        let keys = self.server_roads.roads.mapRoads.keys();
+        for key in keys {
+            if buffer.starts_with(key.as_bytes()){
+                return Some(self.getRoad(key.into()).clone());
+            }
+        }
+        None
+    }
+
 }
 
-async fn processing_request(stream: TcpStream, handler: &Handler)
-{
-
+async fn processing_request(stream: TcpStream, handler: Handler){
      //processing of an incoming request with a user-defined function
     handler(stream).await;
 }
