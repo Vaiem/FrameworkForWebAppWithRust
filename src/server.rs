@@ -4,6 +4,8 @@ use std::{collections::HashMap, sync::{Arc}};
 use std::sync::Once;
 use core::pin::Pin;
 
+use crate::Errors;
+
 static mut STATE_APP: usize = 0;
 static INIT: Once = Once::new();
 
@@ -13,7 +15,7 @@ type Handler = fn(TcpStream) -> Pin<Box<dyn Future<Output = ()> + Send + 'static
 pub trait servConfig {
     //return String it is temporarily, next version return handler
     fn getRoad(&self, addr: String) -> &Handler;
-    fn setRoad(&mut self, addr: String, handler: Handler) -> Result<(), io::Error>;
+    fn setRoad(&mut self, addr: String, handler: Handler);
 }
 
 trait App: servConfig{
@@ -45,11 +47,11 @@ impl servConfig for Application {
         self.server_roads.roads.mapRoads.get(&addr).unwrap()
     }
 
-    fn setRoad(&mut self, addr: String, handler: Handler) -> Result<(), io::Error>{
+    fn setRoad(&mut self, addr: String, handler: Handler){
         //example 
         //create ERROR later
-        self.server_roads.roads.mapRoads.insert(addr, handler).unwrap();
-        Ok(())
+         self.server_roads.roads.mapRoads.insert(addr, handler);
+        
     }
 }
 
@@ -67,16 +69,16 @@ impl Application {
         }
     } 
 
-    pub async fn Build(addrListener: String) -> Option<Application>{
+    pub async fn Build(addrListener: String) -> Result<Option<Application>, Errors::ServErrorBuild>{
         unsafe{
             if STATE_APP == 1 {
-                return None;
+                return Err(Errors::ServErrorBuild);
             }
             let app = Application::new(addrListener).await;
             INIT.call_once(|| {
                  STATE_APP = 1;
             });
-            Some(app)
+            Ok(Some(app))
         }
     }
 
@@ -114,17 +116,7 @@ async fn processing_request(stream: TcpStream, handler: Handler){
     handler(stream).await;
 }
 
-async fn Get_handler_to_request<'a>(app: &'a Application, stream:&mut tokio::net::TcpStream) -> Option<&'a Handler>{
-    let mut buffer = vec![0;1024];
-    stream.read(&mut buffer).await.unwrap();
-    let keys = app.server_roads.roads.mapRoads.keys();
-    for key in keys {
-        if buffer.starts_with(key.as_bytes()){
-            return Some(app.getRoad(key.into()));
-        }
-    }
-    None
-}
+
 
  //delet
 

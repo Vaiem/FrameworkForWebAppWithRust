@@ -1,4 +1,5 @@
 mod server;
+mod Errors;
 use server::servConfig;
 use tokio::net::TcpStream;
 use tokio::macros::support::Future;
@@ -7,8 +8,8 @@ use core::pin::Pin;
 #[tokio::main]
 async fn main() {
     //example
-    let mut serv_build = server::Application::Build("adsada".to_string()).await.unwrap();
-    serv_build.setRoad("omegalol".to_string(), handler_user_requst).unwrap();
+    let mut serv_build = server::Application::Build("adsada".to_string()).await.unwrap().unwrap();
+    serv_build.setRoad("omegalol".to_string(), handler_user_requst);
     let serv = Arc::new(serv_build);
 
     serv.run().await;
