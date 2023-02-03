@@ -1,6 +1,6 @@
 use tokio::{io::{self, AsyncReadExt},net::{TcpListener,TcpStream}, join,sync::Mutex};
 use tokio::macros::support::Future;
-use std::{collections::HashMap, sync::{Arc}};
+use std::{collections::HashMap, sync::{Arc}, io::Error};
 use std::sync::Once;
 use core::pin::Pin;
 
@@ -82,22 +82,29 @@ impl Application {
         }
     }
 
-    pub async fn run(self: Arc<Self>){
+    pub async fn run(self: Arc<Self>) -> Result<(), Error>{
         loop {
+            //handler err
             let copy_app = self.clone();
-            let mut stream = copy_app.conection.tcpListener.accept().await.unwrap();
-            
-            let handler_current = Self::Get_handler_to_request(copy_app, Arc::new(Mutex::new(&mut stream.0)))
-                .await
-                .unwrap();
-            tokio::spawn(async move{    
-                processing_request(stream.0, handler_current).await;
-            });      
-             
+            let mut stream = copy_app.conection.tcpListener.accept().await;
+            if let Err(err) = stream{
+                return Err(err);
+            }else if let Ok( mut stream) = stream {   
+                let handler_current = Self::Get_handler_to_request(copy_app, Arc::new(Mutex::new(&mut stream.0)))
+                                .await;
+                                
+                if let Some(handler) =  handler_current {
+                        tokio::spawn(async move{    
+                                processing_request(stream.0, handler).await;
+                        });
+                }
+                
+            }   
         }
     }
     
     async fn Get_handler_to_request(self: Arc<Self>, stream: Arc<tokio::sync::Mutex<&mut tokio::net::TcpStream>>) -> Option<Handler>{
+        //handler error
         let mut buffer = vec![0;1024];
         stream.lock().await.read(&mut buffer).await.unwrap();
         let keys = self.server_roads.roads.mapRoads.keys();
